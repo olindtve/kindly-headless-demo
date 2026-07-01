@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dummy nettside – Kindly headless demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>Mitt firma</h1>
+    <nav>
+      <a href="#">Hjem</a>
+      <a href="#">Produkter</a>
+      <a href="#">Om oss</a>
+      <a href="#">Kontakt</a>
+    </nav>
+  </header>
+
+  <div class="page-layout">
+    <main class="hero">
+      <h2>Dette er en dummy-nettside</h2>
+      <p>Chat-panelet til høyre er koblet mot din egen Kindly-bot via Application API (headless) — helt egendesignet frontend.</p>
+    </main>
+
+    <!-- Chat-panel: alltid synlig, integrert del av siden -->
+    <aside id="kindly-chat-panel" class="chat-panel">
+      <div class="chat-header">
+        <span>Chat med oss</span>
+      </div>
+
+      <div id="chat-messages" class="chat-messages"></div>
+
+      <div id="chat-typing" class="chat-typing hidden">Boten skriver …</div>
+
+      <form id="chat-form" class="chat-form">
+        <input
+          id="chat-input"
+          type="text"
+          placeholder="Skriv en melding …"
+          autocomplete="off"
+        />
+        <button type="submit">Send</button>
+      </form>
+    </aside>
+  </div>
+
+  <script src="chat.js"></script>
+</body>
+</html>
