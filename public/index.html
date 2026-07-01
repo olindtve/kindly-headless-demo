@@ -3,62 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dummy nettside – Kindly headless demo</title>
+  <title>AutoSync (demo) – Kindly headless demo</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="site-header">
-    <h1>Mitt firma</h1>
+    <div class="logo">Auto<span>Sync</span></div>
     <nav>
-      <a href="#">Hjem</a>
-      <a href="#">Produkter</a>
+      <a href="#">Tjenester</a>
+      <a href="#">Bomkalkulator</a>
+      <a href="#">Kundeservice</a>
       <a href="#">Om oss</a>
-      <a href="#">Kontakt</a>
+      <button id="nav-chat-toggle" class="nav-chat-link" aria-expanded="false">Chat med oss</button>
     </nav>
   </header>
 
-  <div class="page-layout">
-    <main class="hero">
-      <h2>Dette er en dummy-nettside</h2>
-      <p>Chatten midt på siden er koblet mot din egen Kindly-bot via Application API (headless) — helt egendesignet frontend.</p>
-    </main>
-
-    <!-- Blomst-chat: kronblader + midtsirkel med selve chat-kortet sømløst limt inn i midten -->
-    <div class="flower-stage">
-      <div class="flower-petals-big" aria-hidden="true">
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-        <span class="petal-big"></span>
-      </div>
-
-      <div class="flower-pistil" aria-hidden="true"></div>
-
-      <aside id="kindly-chat-panel" class="chat-panel">
-        <div class="chat-header">
-          <span>Chat med oss</span>
-        </div>
-
-        <div id="chat-messages" class="chat-messages"></div>
-
-        <div id="chat-typing" class="chat-typing hidden">Boten skriver …</div>
-
-        <form id="chat-form" class="chat-form">
-          <input
-            id="chat-input"
-            type="text"
-            placeholder="Skriv en melding …"
-            autocomplete="off"
-          />
-          <button type="submit">Send</button>
-        </form>
-      </aside>
+  <!-- Chat-panel: åpnes fra navigasjonen, som en naturlig del av kundeservice -->
+  <div id="chat-dropdown" class="chat-dropdown hidden">
+    <div class="chat-header">
+      <span>Chat med kundeservice</span>
+      <button id="chat-close" aria-label="Lukk chat">✕</button>
     </div>
+
+    <div id="chat-messages" class="chat-messages"></div>
+
+    <div id="chat-typing" class="chat-typing hidden">Rådgiveren skriver …</div>
+
+    <form id="chat-form" class="chat-form">
+      <input
+        id="chat-input"
+        type="text"
+        placeholder="Skriv en melding …"
+        autocomplete="off"
+      />
+      <button type="submit">Send</button>
+    </form>
   </div>
+
+  <main class="hero">
+    <h1>Gjør bilhverdagen enklere</h1>
+    <p>Én avtale, én faktura – bom og ferge samlet på tvers av hele Norden. Se hva du kan spare, og kom i gang på under to minutter.</p>
+    <div class="hero-actions">
+      <a href="#" class="btn btn-primary">Bestill brikke</a>
+      <a href="#" class="btn btn-secondary">Logg inn</a>
+    </div>
+  </main>
+
+  <section class="feature-cards">
+    <div class="card">
+      <h3>Bombetaling</h3>
+      <p>Automatisk trekk fra alle bomstasjoner i Norge, samlet i én oversiktlig faktura hver måned.</p>
+    </div>
+    <div class="card">
+      <h3>Fergebetaling</h3>
+      <p>Kjør rett ombord – fergebilletten trekkes automatisk sammen med resten av bomavgiftene dine.</p>
+    </div>
+    <div class="card">
+      <h3>Rabatter</h3>
+      <p>Registrerte kunder får automatisk rabatt på de fleste strekninger, uten noe du selv trenger å gjøre.</p>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>Dette er en demo-nettside laget for å vise hvor enkelt Kindly kan integreres i en eksisterende nettside. Ingen tilknytning til noe reelt selskap.</p>
+  </footer>
 
   <script src="chat.js"></script>
 </body>

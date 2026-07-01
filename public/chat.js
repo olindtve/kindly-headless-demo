@@ -9,6 +9,9 @@
   const STORAGE_KEY = 'kindly_demo_user_id';
   let userId = localStorage.getItem(STORAGE_KEY);
 
+  const navToggle = document.getElementById('nav-chat-toggle');
+  const closeBtn = document.getElementById('chat-close');
+  const dropdown = document.getElementById('chat-dropdown');
   const messagesEl = document.getElementById('chat-messages');
   const typingEl = document.getElementById('chat-typing');
   const form = document.getElementById('chat-form');
@@ -26,7 +29,6 @@
 
     ws.addEventListener('open', () => {
       console.log('WebSocket tilkoblet');
-      if (userId) greet();
     });
 
     ws.addEventListener('message', (event) => {
@@ -36,7 +38,6 @@
         // Backend genererte en ny user_id til oss – husk den.
         userId = data.userId;
         localStorage.setItem(STORAGE_KEY, userId);
-        greet();
       }
 
       if (data.type === 'message') {
@@ -149,6 +150,18 @@
     addMessage(text, 'user');
     input.value = '';
     sendMessage(text);
+  });
+
+  navToggle.addEventListener('click', () => {
+    const isOpening = dropdown.classList.contains('hidden');
+    dropdown.classList.toggle('hidden');
+    navToggle.setAttribute('aria-expanded', String(isOpening));
+    if (isOpening) greet();
+  });
+
+  closeBtn.addEventListener('click', () => {
+    dropdown.classList.add('hidden');
+    navToggle.setAttribute('aria-expanded', 'false');
   });
 
   connectWebSocket();
