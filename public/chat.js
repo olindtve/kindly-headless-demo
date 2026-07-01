@@ -151,5 +151,15 @@
     sendMessage(text);
   });
 
+  // Bakgrunnsfaner får throttlet setTimeout av nettleseren, så en
+  // reconnect etter tap av tilkobling (f.eks. en serverdeploy) kan bli
+  // hengende lenge hvis fanen ikke er i fokus. Sjekk og koble til på
+  // nytt med det samme når fanen får fokus igjen.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) {
+      connectWebSocket();
+    }
+  });
+
   connectWebSocket();
 })();
