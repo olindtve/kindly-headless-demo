@@ -20,29 +20,44 @@
   <div class="page-layout">
     <main class="hero">
       <h2>Dette er en dummy-nettside</h2>
-      <p>Chat-panelet til høyre er koblet mot din egen Kindly-bot via Application API (headless) — helt egendesignet frontend.</p>
+      <p>Chatten midt på siden er koblet mot din egen Kindly-bot via Application API (headless) — helt egendesignet frontend.</p>
     </main>
 
-    <!-- Chat-panel: alltid synlig, integrert del av siden -->
-    <aside id="kindly-chat-panel" class="chat-panel">
-      <div class="chat-header">
-        <span>Chat med oss</span>
+    <!-- Blomst-chat: kronblader + midtsirkel med selve chat-kortet sømløst limt inn i midten -->
+    <div class="flower-stage">
+      <div class="flower-petals-big" aria-hidden="true">
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
+        <span class="petal-big"></span>
       </div>
 
-      <div id="chat-messages" class="chat-messages"></div>
+      <div class="flower-pistil" aria-hidden="true"></div>
 
-      <div id="chat-typing" class="chat-typing hidden">Boten skriver …</div>
+      <aside id="kindly-chat-panel" class="chat-panel">
+        <div class="chat-header">
+          <span>Chat med oss</span>
+        </div>
 
-      <form id="chat-form" class="chat-form">
-        <input
-          id="chat-input"
-          type="text"
-          placeholder="Skriv en melding …"
-          autocomplete="off"
-        />
-        <button type="submit">Send</button>
-      </form>
-    </aside>
+        <div id="chat-messages" class="chat-messages"></div>
+
+        <div id="chat-typing" class="chat-typing hidden">Boten skriver …</div>
+
+        <form id="chat-form" class="chat-form">
+          <input
+            id="chat-input"
+            type="text"
+            placeholder="Skriv en melding …"
+            autocomplete="off"
+          />
+          <button type="submit">Send</button>
+        </form>
+      </aside>
+    </div>
   </div>
 
   <script src="chat.js"></script>
