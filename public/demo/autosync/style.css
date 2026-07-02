@@ -68,11 +68,14 @@ body {
   flex-direction: column;
   gap: 1.1rem;
   min-height: 40px;
+  max-height: 50vh;
+  overflow-y: auto;
   margin-bottom: 1.5rem;
+  padding-right: 0.5rem;
 }
 
 .msg {
-  max-width: 100%;
+  max-width: 80%;
   line-height: 1.6;
   font-size: 1.05rem;
   white-space: pre-wrap;
@@ -82,7 +85,7 @@ body {
   align-self: flex-end;
   color: var(--brand-dark);
   font-weight: 600;
-  text-align: right;
+  text-align: left;
 }
 
 .msg.bot {
