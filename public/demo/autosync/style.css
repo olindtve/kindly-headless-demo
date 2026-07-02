@@ -191,3 +191,5 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+.site-footer a { color: var(--brand); }

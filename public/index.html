@@ -3,58 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AutoSync (demo) – Kindly headless demo</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Kindly headless – demoer</title>
+  <link rel="stylesheet" href="landing.css" />
 </head>
 <body>
-  <header class="site-header">
-    <div class="logo">Auto<span>Sync</span></div>
-    <nav>
-      <a href="#">Kundeservice</a>
-      <a href="#">Om oss</a>
-    </nav>
+  <header class="landing-header">
+    <div class="logo">Kindly <span>headless</span></div>
   </header>
 
-  <!-- Samtalen ER navigasjonen: ingen knapper, ingen boks rundt chatten -->
-  <main class="chat-stage">
-    <h1>Hva kan jeg hjelpe deg med?</h1>
-    <p class="chat-intro">Fortell meg med egne ord hva du er ute etter — det kan være å bestille brikke, sjekke priser, eller noe helt annet.</p>
+  <main class="landing-hero">
+    <h1>Demoer</h1>
+    <p>Samme bot og backend, forskjellig frontend-implementasjon — velg en demo for å se hvordan chatten kan bygges inn på ulike måter.</p>
 
-    <div id="chat-messages" class="chat-open-messages"></div>
+    <div class="demo-grid">
+      <a class="demo-card" href="/demo/autosync/">
+        <span class="demo-card-tag">Dialogbasert navigasjon</span>
+        <h2>AutoSync</h2>
+        <p>Chatten er selve inngangen til siden — ingen knapper, ingen boks. Besøkende forteller med egne ord hva de trenger.</p>
+      </a>
 
-    <div id="chat-typing" class="chat-typing hidden">Skriver …</div>
-
-    <form id="chat-form" class="chat-open-form">
-      <input
-        id="chat-input"
-        type="text"
-        placeholder="Skriv her …"
-        autocomplete="off"
-        autofocus
-      />
-      <button type="submit" aria-label="Send">→</button>
-    </form>
+      <!-- Flere demo-varianter legges til her etter hvert -->
+      <div class="demo-card demo-card-placeholder">
+        <span class="demo-card-tag">Kommer</span>
+        <h2>Neste demo</h2>
+        <p>Plass til en ny kundetilpasset variant, f.eks. chat integrert i navigasjonen eller som et sidepanel.</p>
+      </div>
+    </div>
   </main>
 
-  <section class="feature-cards">
-    <div class="card">
-      <h3>Bombetaling</h3>
-      <p>Automatisk trekk fra alle bomstasjoner i Norge, samlet i én oversiktlig faktura hver måned.</p>
-    </div>
-    <div class="card">
-      <h3>Fergebetaling</h3>
-      <p>Kjør rett ombord – fergebilletten trekkes automatisk sammen med resten av bomavgiftene dine.</p>
-    </div>
-    <div class="card">
-      <h3>Rabatter</h3>
-      <p>Registrerte kunder får automatisk rabatt på de fleste strekninger, uten noe du selv trenger å gjøre.</p>
-    </div>
-  </section>
-
-  <footer class="site-footer">
-    <p>Dette er en demo-nettside laget for å vise hvor enkelt Kindly kan integreres i en eksisterende nettside. Ingen tilknytning til noe reelt selskap.</p>
+  <footer class="landing-footer">
+    <p>Interne demoer for å vise hvor enkelt Kindly Application API kan integreres i en eksisterende nettside.</p>
   </footer>
-
-  <script src="chat.js"></script>
 </body>
 </html>

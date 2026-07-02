@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoSync (demo) – Kindly headless demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="logo">Auto<span>Sync</span></div>
+    <nav>
+      <a href="#">Kundeservice</a>
+      <a href="#">Om oss</a>
+    </nav>
+  </header>
+
+  <!-- Samtalen ER navigasjonen: ingen knapper, ingen boks rundt chatten -->
+  <main class="chat-stage">
+    <h1>Hva kan jeg hjelpe deg med?</h1>
+    <p class="chat-intro">Fortell meg med egne ord hva du er ute etter — det kan være å bestille brikke, sjekke priser, eller noe helt annet.</p>
+
+    <div id="chat-messages" class="chat-open-messages"></div>
+
+    <div id="chat-typing" class="chat-typing hidden">Skriver …</div>
+
+    <form id="chat-form" class="chat-open-form">
+      <input
+        id="chat-input"
+        type="text"
+        placeholder="Skriv her …"
+        autocomplete="off"
+        autofocus
+      />
+      <button type="submit" aria-label="Send">→</button>
+    </form>
+  </main>
+
+  <section class="feature-cards">
+    <div class="card">
+      <h3>Bombetaling</h3>
+      <p>Automatisk trekk fra alle bomstasjoner i Norge, samlet i én oversiktlig faktura hver måned.</p>
+    </div>
+    <div class="card">
+      <h3>Fergebetaling</h3>
+      <p>Kjør rett ombord – fergebilletten trekkes automatisk sammen med resten av bomavgiftene dine.</p>
+    </div>
+    <div class="card">
+      <h3>Rabatter</h3>
+      <p>Registrerte kunder får automatisk rabatt på de fleste strekninger, uten noe du selv trenger å gjøre.</p>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>Dette er en demo-nettside laget for å vise hvor enkelt Kindly kan integreres i en eksisterende nettside. Ingen tilknytning til noe reelt selskap.</p>
+    <p><a href="/">← Se andre demoer</a></p>
+  </footer>
+
+  <script src="/shared/kindly-chat-core.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>
