@@ -56,6 +56,8 @@ wss.on('connection', (ws, req) => {
   }
 
   connections.set(userId, ws);
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   console.log(`🔌 WebSocket tilkoblet for user_id=${userId}`);
 
   ws.on('close', () => {
@@ -63,6 +65,22 @@ wss.on('connection', (ws, req) => {
     console.log(`❌ WebSocket frakoblet for user_id=${userId}`);
   });
 });
+
+// Plattformer som Render kan stille kutte inaktive WebSocket-tilkoblinger
+// (proxy-idle-timeout). Uten en heartbeat tror serveren forbindelsen
+// fortsatt er åpen, og et webhook-svar som kommer inn mens tilkoblingen
+// egentlig er død, forsvinner sporløst. Ping hvert 25. sekund holder
+// forbindelsen varm og rydder raskt opp tilkoblinger som faktisk er døde,
+// slik at klienten kobler til på nytt i stedet for å stå fast på "skriver …".
+const heartbeat = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 25000);
+
+wss.on('close', () => clearInterval(heartbeat));
 
 // --- 1. Frontend -> Kindly: send brukermelding ---------------------------
 app.post('/api/kindly/send', async (req, res) => {
