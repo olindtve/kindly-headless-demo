@@ -124,13 +124,13 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  border: 2px solid #2f9e58;
+  border: 2px solid #d9342b;
   border-radius: 999px;
   padding: 0.4rem 0.4rem 0.4rem 1rem;
   transition: border-color 0.15s ease;
 }
 
-.chat-open-form:focus-within { border-color: #237a43; }
+.chat-open-form:focus-within { border-color: #a8241d; }
 
 .chat-open-form input {
   flex: 1;
