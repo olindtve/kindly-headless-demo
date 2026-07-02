@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AtB (demo) – Kindly headless demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="service-banner">Driftsmelding: Normal drift på alle linjer i dag.</div>
+
+  <header class="site-header">
+    <div class="logo">AtB</div>
+    <nav>
+      <a href="#">Planlegg reisen</a>
+      <a href="#">Billetter og priser</a>
+      <a href="#">Kundeservice</a>
+      <a href="#">Om AtB</a>
+    </nav>
+  </header>
+
+  <section class="planner-hero">
+    <h1>Hvor skal du?</h1>
+    <p>Planlegg reisen din med buss, trikk eller hurtigbåt i Trøndelag.</p>
+
+    <div class="planner-widget">
+      <div class="planner-field">
+        <label for="planner-from">Fra</label>
+        <input id="planner-from" type="text" placeholder="Din posisjon" />
+      </div>
+      <button class="planner-swap" type="button" aria-label="Bytt fra og til">⇅</button>
+      <div class="planner-field">
+        <label for="planner-to">Til</label>
+        <input id="planner-to" type="text" placeholder="Hvor skal du?" />
+      </div>
+      <div class="planner-field planner-field-time">
+        <label for="planner-time">Når</label>
+        <input id="planner-time" type="text" value="Nå" />
+      </div>
+      <button class="btn-primary planner-submit" type="button">Søk reise</button>
+    </div>
+  </section>
+
+  <!-- AtB-assistenten: alltid synlig, integrert rett under reiseplanleggeren -->
+  <section class="assistant-section">
+    <div class="assistant-card">
+      <div class="assistant-intro">
+        <span class="assistant-badge">AtB-assistenten</span>
+        <h2>Eller bare spør oss</h2>
+        <p>Fortell hvor du skal og når, så finner assistenten beste reise og anbefaler riktig billett for deg.</p>
+      </div>
+
+      <div id="chat-messages" class="assistant-messages"></div>
+
+      <div id="chat-typing" class="chat-typing hidden">Skriver …</div>
+
+      <form id="chat-form" class="assistant-form">
+        <input
+          id="chat-input"
+          type="text"
+          placeholder="F.eks. «Jeg skal fra Lerkendal til Moholt klokka ni»"
+          autocomplete="off"
+        />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="ticket-types">
+    <h2>Billetter</h2>
+    <div class="ticket-grid">
+      <div class="ticket-card">
+        <h3>Enkeltbillett</h3>
+        <p>Kjøp billett for én reise, betal med kort eller Vipps rett i appen.</p>
+      </div>
+      <div class="ticket-card">
+        <h3>Periodebillett</h3>
+        <p>30 dager med fri reise i valgt sone — lønnsomt hvis du reiser ofte.</p>
+      </div>
+      <div class="ticket-card">
+        <h3>Mobilbillett</h3>
+        <p>Billetten din alltid tilgjengelig i AtB Mobillett-appen, uten papir.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>Dette er en demo-nettside laget for å vise hvor enkelt Kindly kan integreres i en eksisterende nettside. Ingen tilknytning til AtB AS.</p>
+    <p><a href="/">← Se andre demoer</a></p>
+  </footer>
+
+  <script src="/shared/kindly-chat-core.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>
