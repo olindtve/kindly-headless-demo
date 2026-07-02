@@ -90,6 +90,10 @@ body {
   color: var(--text);
 }
 
+.msg.bot a {
+  color: var(--brand);
+}
+
 .msg .buttons {
   display: flex;
   flex-wrap: wrap;

@@ -84,7 +84,14 @@
   function addMessage(text, sender) {
     const div = document.createElement('div');
     div.className = `msg ${sender}`;
-    div.textContent = text;
+    // Kindly-svar kan inneholde HTML (linjeskift, lenker) fra boten. Det er
+    // innhold botadministratoren selv har konfigurert, så vi rendrer det som
+    // HTML. Meldinger brukeren skriver selv vises alltid som ren tekst.
+    if (sender === 'bot') {
+      div.innerHTML = text;
+    } else {
+      div.textContent = text;
+    }
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
