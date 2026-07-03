@@ -26,6 +26,7 @@ const {
   KINDLY_BASE_URL = 'https://bot.kindly.ai',
   PORT = 3000,
   WEBHOOK_SHARED_SECRET, // valgfritt: hvis du later til HMAC-signatur fra Kindly
+  ENTUR_CLIENT_NAME = 'kindly-headless-demo - atb-demo', // Entur krever "organisasjon - applikasjon"
 } = process.env;
 
 if (!KINDLY_API_KEY) {
@@ -142,6 +143,116 @@ app.post('/api/kindly/greet', async (req, res) => {
   } catch (err) {
     console.error('Feil ved greet mot Kindly:', err);
     res.status(500).json({ error: 'Klarte ikke å nå Kindly' });
+  }
+});
+
+// --- Entur: reiseplanlegging til AtB-demoen -------------------------------
+// Åpne, gratis API-er fra Entur (nasjonalt reisedata-aggregat). Krever ingen
+// nøkkel, bare en ET-Client-Name-header for identifikasjon. Kalles fra
+// backend (ikke direkte fra nettleseren) for å holde et samlet mønster med
+// resten av integrasjonene og gjøre det enkelt å bytte ut/cache senere.
+const ENTUR_GEOCODER_URL = 'https://api.entur.io/geocoder/v2/autocomplete';
+const ENTUR_JOURNEY_PLANNER_URL = 'https://api.entur.io/journey-planner/v3/graphql';
+
+app.get('/api/entur/autocomplete', async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) return res.json({ features: [] });
+
+  try {
+    const url = `${ENTUR_GEOCODER_URL}?text=${encodeURIComponent(q)}&lang=no&size=5`;
+    const response = await fetch(url, {
+      headers: { 'ET-Client-Name': ENTUR_CLIENT_NAME },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('Entur geocoder feilet:', response.status, text);
+      return res.status(502).json({ error: 'Klarte ikke å hente stedsforslag' });
+    }
+
+    const data = await response.json();
+    const features = (data.features || []).map((f) => ({
+      id: f.properties.id,
+      name: f.properties.label,
+      // GeoJSON bruker [lon, lat]-rekkefølge. Adresser (i motsetning til
+      // registrerte stoppesteder) har ingen NSR-ID reiseplanleggeren
+      // kjenner igjen, så vi sender med koordinater som fallback.
+      lon: f.geometry.coordinates[0],
+      lat: f.geometry.coordinates[1],
+    }));
+    res.json({ features });
+  } catch (err) {
+    console.error('Feil ved Entur geocoder-kall:', err);
+    res.status(500).json({ error: 'Klarte ikke å nå Entur' });
+  }
+});
+
+// Registrerte stoppesteder har en NSR-ID reiseplanleggeren kan slå opp
+// direkte (place-argumentet). Adresser og andre geocoder-treff har det ikke,
+// og må i stedet sendes inn som koordinater.
+function toLocationInput({ id, lat, lon }) {
+  if (id && id.startsWith('NSR:')) return { place: id };
+  return { coordinates: { latitude: lat, longitude: lon } };
+}
+
+app.post('/api/entur/trip', async (req, res) => {
+  const { from, to } = req.body;
+  if (!from || !to) {
+    return res.status(400).json({ error: 'from og to er påkrevd' });
+  }
+
+  const query = `
+    query($from: Location!, $to: Location!) {
+      trip(from: $from, to: $to, numTripPatterns: 3) {
+        tripPatterns {
+          startTime
+          endTime
+          duration
+          legs {
+            mode
+            line { publicCode name }
+            fromPlace { name }
+            toPlace { name }
+            expectedStartTime
+            expectedEndTime
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await fetch(ENTUR_JOURNEY_PLANNER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ET-Client-Name': ENTUR_CLIENT_NAME,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          from: toLocationInput(from),
+          to: toLocationInput(to),
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('Entur reiseplanlegger feilet:', response.status, text);
+      return res.status(502).json({ error: 'Klarte ikke å hente reiseforslag' });
+    }
+
+    const data = await response.json();
+    if (data.errors) {
+      console.error('Entur GraphQL-feil:', JSON.stringify(data.errors));
+      return res.status(502).json({ error: 'Entur avviste spørringen', detail: data.errors });
+    }
+
+    res.json({ tripPatterns: data.data.trip.tripPatterns });
+  } catch (err) {
+    console.error('Feil ved Entur reiseplanlegger-kall:', err);
+    res.status(500).json({ error: 'Klarte ikke å nå Entur' });
   }
 });
 

@@ -84,6 +84,35 @@ body {
   gap: 0.3rem;
 }
 
+.planner-field-autocomplete { position: relative; }
+
+.planner-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0;
+  padding: 0.4rem 0;
+  list-style: none;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.planner-suggestions.hidden { display: none; }
+
+.planner-suggestions li {
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.planner-suggestions li:hover { background: var(--bg-alt); }
+
 .planner-field-time { flex: 0 1 110px; }
 
 .planner-field label {
@@ -129,6 +158,52 @@ body {
 .btn-primary:hover { background: var(--accent-dark); }
 
 .planner-submit { flex: 0 0 auto; }
+
+.planner-results {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.planner-results-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.trip-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  background: white;
+}
+
+.trip-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.trip-summary strong { font-size: 1.05rem; }
+.trip-summary span { color: var(--muted); font-size: 0.85rem; }
+
+.trip-legs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.trip-leg {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--brand-dark);
+  font-weight: 600;
+}
 
 /* --- AtB-assistenten: alltid synlig, integrert rett under planleggeren --- */
 .assistant-section {

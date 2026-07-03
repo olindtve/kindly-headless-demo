@@ -24,21 +24,25 @@
     <p>Planlegg reisen din med buss, trikk eller hurtigbåt i Trøndelag.</p>
 
     <div class="planner-widget">
-      <div class="planner-field">
+      <div class="planner-field planner-field-autocomplete">
         <label for="planner-from">Fra</label>
-        <input id="planner-from" type="text" placeholder="Din posisjon" />
+        <input id="planner-from" type="text" placeholder="Din posisjon" autocomplete="off" />
+        <ul id="planner-from-suggestions" class="planner-suggestions hidden"></ul>
       </div>
       <button class="planner-swap" type="button" aria-label="Bytt fra og til">⇅</button>
-      <div class="planner-field">
+      <div class="planner-field planner-field-autocomplete">
         <label for="planner-to">Til</label>
-        <input id="planner-to" type="text" placeholder="Hvor skal du?" />
+        <input id="planner-to" type="text" placeholder="Hvor skal du?" autocomplete="off" />
+        <ul id="planner-to-suggestions" class="planner-suggestions hidden"></ul>
       </div>
       <div class="planner-field planner-field-time">
         <label for="planner-time">Når</label>
         <input id="planner-time" type="text" value="Nå" />
       </div>
-      <button class="btn-primary planner-submit" type="button">Søk reise</button>
+      <button class="btn-primary planner-submit" type="button" id="planner-submit">Søk reise</button>
     </div>
+
+    <div id="planner-results" class="planner-results"></div>
   </section>
 
   <!-- AtB-assistenten: alltid synlig, integrert rett under reiseplanleggeren -->
@@ -89,6 +93,7 @@
     <p><a href="/">← Se andre demoer</a></p>
   </footer>
 
+  <script src="planner.js"></script>
   <script src="/shared/kindly-chat-core.js"></script>
   <script src="chat.js"></script>
 </body>
