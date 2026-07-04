@@ -154,12 +154,19 @@ app.post('/api/kindly/greet', async (req, res) => {
 const ENTUR_GEOCODER_URL = 'https://api.entur.io/geocoder/v2/autocomplete';
 const ENTUR_JOURNEY_PLANNER_URL = 'https://api.entur.io/journey-planner/v3/graphql';
 
+// Sentrum av Trondheim, brukt til å vekte autocomplete-treff mot AtBs
+// dekningsområde (Entur er nasjonal, uten dette kan f.eks. "Moholt" i en
+// annen landsdel rangeres høyere enn Moholt i Trondheim).
+const TRONDHEIM_CENTER = { lat: 63.4305, lon: 10.3951 };
+
 app.get('/api/entur/autocomplete', async (req, res) => {
   const { q } = req.query;
   if (!q || q.trim().length < 2) return res.json({ features: [] });
 
   try {
-    const url = `${ENTUR_GEOCODER_URL}?text=${encodeURIComponent(q)}&lang=no&size=5`;
+    const url =
+      `${ENTUR_GEOCODER_URL}?text=${encodeURIComponent(q)}&lang=no&size=5` +
+      `&focus.point.lat=${TRONDHEIM_CENTER.lat}&focus.point.lon=${TRONDHEIM_CENTER.lon}`;
     const response = await fetch(url, {
       headers: { 'ET-Client-Name': ENTUR_CLIENT_NAME },
     });
@@ -171,15 +178,22 @@ app.get('/api/entur/autocomplete', async (req, res) => {
     }
 
     const data = await response.json();
-    const features = (data.features || []).map((f) => ({
-      id: f.properties.id,
-      name: f.properties.label,
-      // GeoJSON bruker [lon, lat]-rekkefølge. Adresser (i motsetning til
-      // registrerte stoppesteder) har ingen NSR-ID reiseplanleggeren
-      // kjenner igjen, så vi sender med koordinater som fallback.
-      lon: f.geometry.coordinates[0],
-      lat: f.geometry.coordinates[1],
-    }));
+    const features = (data.features || []).map((f) => {
+      const zones = (f.properties.tariff_zones || [])
+        .filter((z) => z.startsWith('ATB:FareZone:'))
+        .map((z) => z.replace('ATB:FareZone:', ''));
+
+      return {
+        id: f.properties.id,
+        name: f.properties.label,
+        // GeoJSON bruker [lon, lat]-rekkefølge. Adresser (i motsetning til
+        // registrerte stoppesteder) har ingen NSR-ID reiseplanleggeren
+        // kjenner igjen, så vi sender med koordinater som fallback.
+        lon: f.geometry.coordinates[0],
+        lat: f.geometry.coordinates[1],
+        zone: zones[0] || null,
+      };
+    });
     res.json({ features });
   } catch (err) {
     console.error('Feil ved Entur geocoder-kall:', err);

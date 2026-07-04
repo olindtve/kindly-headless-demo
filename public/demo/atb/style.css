@@ -293,6 +293,21 @@ body {
 
 .msg .buttons button:hover { background: rgba(255, 255, 255, 0.15); }
 
+.vipps-button {
+  background: #ff5b24;
+  color: white;
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.vipps-button:hover { background: #e34c1a; }
+.vipps-button:disabled { opacity: 0.7; cursor: default; }
+
 .chat-typing {
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.75);

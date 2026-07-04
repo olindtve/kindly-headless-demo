@@ -79,12 +79,132 @@
   KindlyChat.on('typingEnd', () => typingEl.classList.add('hidden'));
   KindlyChat.on('message', renderBotPayload);
 
+  // --- Reiseplanlegging rett i samtalen ------------------------------------
+  // Kindly-boten selv har ingen kjennskap til Entur/reiseplanlegging (det
+  // krever dialogoppsett på Kindly-siden, utenfor denne kodebasen). For å
+  // vise frem hva en reell integrasjon kunne gjøre, kjenner vi lokalt igjen
+  // et enkelt "fra X til Y"-mønster og svarer selv med ekte Entur-data i
+  // stedet for å sende meldingen videre til Kindly. Alt annet går som før
+  // til den vanlige boten.
+  function parseTravelIntent(text) {
+    const match = text.match(/fra\s+(.+?)\s+til\s+(.+)/i);
+    if (!match) return null;
+
+    const from = match[1].trim().replace(/[.?!]+$/, '');
+    let to = match[2].trim();
+
+    // Kutt bort en eventuell tids-frase på slutten, f.eks. "Moholt klokka ni"
+    const timeMatch = to.match(/^(.*?)\s+(?:klokka|kl\.?)\s+.+$/i);
+    if (timeMatch) to = timeMatch[1];
+    to = to.trim().replace(/[.?!]+$/, '');
+
+    if (!from || !to) return null;
+    return { from, to };
+  }
+
+  async function geocodeTop(text) {
+    const response = await fetch(`/api/entur/autocomplete?q=${encodeURIComponent(text)}`);
+    const data = await response.json();
+    return (data.features && data.features[0]) || null;
+  }
+
+  function addVippsButton(ticketLabel, price) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg bot';
+    const btn = document.createElement('button');
+    btn.className = 'vipps-button';
+    btn.textContent = `Betal kr ${price} med Vipps (demo)`;
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      btn.textContent = 'Behandler betaling …';
+      setTimeout(() => {
+        addMessage(`✅ (Demo) Betaling bekreftet med Vipps — ${ticketLabel} er nå aktiv i AtB Mobillett.`, 'bot');
+      }, 900);
+    });
+    wrapper.appendChild(btn);
+    messagesEl.appendChild(wrapper);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function handleTravelIntent(intent) {
+    typingEl.classList.remove('hidden');
+    try {
+      const [fromPlace, toPlace] = await Promise.all([
+        geocodeTop(intent.from),
+        geocodeTop(intent.to),
+      ]);
+
+      if (!fromPlace || !toPlace) {
+        typingEl.classList.add('hidden');
+        const missing = !fromPlace ? intent.from : intent.to;
+        addMessage(`Fant ikke stedet «${missing}». Kan du prøve å skrive det litt annerledes?`, 'bot');
+        return;
+      }
+
+      const tripResponse = await fetch('/api/entur/trip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: fromPlace, to: toPlace }),
+      });
+      const tripData = await tripResponse.json();
+      typingEl.classList.add('hidden');
+
+      // Entur rangerer noen ganger en ren gangtur øverst hvis den er raskere
+      // enn å vente på buss. Det er teknisk riktig, men et dårlig
+      // utstillingsvindu for en kollektivselskap-demo — foretrekk et
+      // alternativ med faktisk kollektivtransport når et slikt finnes.
+      const patterns = tripData.tripPatterns || [];
+      const pattern = patterns.find((p) => p.legs.some((leg) => leg.mode !== 'foot')) || patterns[0];
+      if (!pattern) {
+        addMessage(`Fant ingen reiseforslag fra ${fromPlace.name} til ${toPlace.name} akkurat nå.`, 'bot');
+        return;
+      }
+
+      const start = new Date(pattern.startTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
+      const end = new Date(pattern.endTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
+      const minutes = Math.round(pattern.duration / 60);
+      const transitLegs = pattern.legs.filter((leg) => leg.mode !== 'foot');
+      const lineText = transitLegs.length
+        ? transitLegs
+            .map((leg) => (leg.line ? `${leg.line.publicCode} ${leg.line.name}` : leg.mode))
+            .join(' → ')
+        : 'gange hele veien';
+
+      addMessage(
+        `Beste reise fra ${fromPlace.name} til ${toPlace.name}: avgang ${start}, fremme ${end} (${minutes} min) med ${lineText}.`,
+        'bot'
+      );
+
+      // Enkel billettanbefaling basert på AtBs sonemodell. Prisene under er
+      // illustrative demo-tall, ikke reelle AtB-priser.
+      const sameZone = fromPlace.zone && toPlace.zone && fromPlace.zone === toPlace.zone;
+      const ticketLabel = sameZone ? 'Enkeltbillett, 1 sone' : 'Enkeltbillett, 2 soner';
+      const price = sameZone ? '41' : '60';
+
+      addMessage(
+        `Basert på reisen anbefaler jeg <strong>${ticketLabel}</strong> (ca. kr ${price},- illustrativ demo-pris).`,
+        'bot'
+      );
+      addVippsButton(ticketLabel, price);
+    } catch (err) {
+      typingEl.classList.add('hidden');
+      addMessage('Beklager, klarte ikke å slå opp reisen akkurat nå.', 'bot');
+      console.error(err);
+    }
+  }
+
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
     addMessage(text, 'user');
     input.value = '';
-    KindlyChat.sendMessage(text);
+
+    const intent = parseTravelIntent(text);
+    if (intent) {
+      handleTravelIntent(intent);
+    } else {
+      KindlyChat.sendMessage(text);
+    }
   });
 })();
