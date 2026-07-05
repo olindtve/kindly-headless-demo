@@ -159,45 +159,47 @@ const ENTUR_JOURNEY_PLANNER_URL = 'https://api.entur.io/journey-planner/v3/graph
 // annen landsdel rangeres høyere enn Moholt i Trondheim).
 const TRONDHEIM_CENTER = { lat: 63.4305, lon: 10.3951 };
 
+async function geocodeAutocomplete(q) {
+  if (!q || q.trim().length < 2) return [];
+
+  const url =
+    `${ENTUR_GEOCODER_URL}?text=${encodeURIComponent(q)}&lang=no&size=5` +
+    `&focus.point.lat=${TRONDHEIM_CENTER.lat}&focus.point.lon=${TRONDHEIM_CENTER.lon}`;
+  const response = await fetch(url, {
+    headers: { 'ET-Client-Name': ENTUR_CLIENT_NAME },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Entur geocoder feilet: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return (data.features || []).map((f) => {
+    const zones = (f.properties.tariff_zones || [])
+      .filter((z) => z.startsWith('ATB:FareZone:'))
+      .map((z) => z.replace('ATB:FareZone:', ''));
+
+    return {
+      id: f.properties.id,
+      name: f.properties.label,
+      // GeoJSON bruker [lon, lat]-rekkefølge. Adresser (i motsetning til
+      // registrerte stoppesteder) har ingen NSR-ID reiseplanleggeren
+      // kjenner igjen, så vi sender med koordinater som fallback.
+      lon: f.geometry.coordinates[0],
+      lat: f.geometry.coordinates[1],
+      zone: zones[0] || null,
+    };
+  });
+}
+
 app.get('/api/entur/autocomplete', async (req, res) => {
-  const { q } = req.query;
-  if (!q || q.trim().length < 2) return res.json({ features: [] });
-
   try {
-    const url =
-      `${ENTUR_GEOCODER_URL}?text=${encodeURIComponent(q)}&lang=no&size=5` +
-      `&focus.point.lat=${TRONDHEIM_CENTER.lat}&focus.point.lon=${TRONDHEIM_CENTER.lon}`;
-    const response = await fetch(url, {
-      headers: { 'ET-Client-Name': ENTUR_CLIENT_NAME },
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('Entur geocoder feilet:', response.status, text);
-      return res.status(502).json({ error: 'Klarte ikke å hente stedsforslag' });
-    }
-
-    const data = await response.json();
-    const features = (data.features || []).map((f) => {
-      const zones = (f.properties.tariff_zones || [])
-        .filter((z) => z.startsWith('ATB:FareZone:'))
-        .map((z) => z.replace('ATB:FareZone:', ''));
-
-      return {
-        id: f.properties.id,
-        name: f.properties.label,
-        // GeoJSON bruker [lon, lat]-rekkefølge. Adresser (i motsetning til
-        // registrerte stoppesteder) har ingen NSR-ID reiseplanleggeren
-        // kjenner igjen, så vi sender med koordinater som fallback.
-        lon: f.geometry.coordinates[0],
-        lat: f.geometry.coordinates[1],
-        zone: zones[0] || null,
-      };
-    });
+    const features = await geocodeAutocomplete(req.query.q);
     res.json({ features });
   } catch (err) {
-    console.error('Feil ved Entur geocoder-kall:', err);
-    res.status(500).json({ error: 'Klarte ikke å nå Entur' });
+    console.error('Feil ved Entur geocoder-kall:', err.message);
+    res.status(502).json({ error: 'Klarte ikke å hente stedsforslag' });
   }
 });
 
@@ -209,12 +211,7 @@ function toLocationInput({ id, lat, lon }) {
   return { coordinates: { latitude: lat, longitude: lon } };
 }
 
-app.post('/api/entur/trip', async (req, res) => {
-  const { from, to } = req.body;
-  if (!from || !to) {
-    return res.status(400).json({ error: 'from og to er påkrevd' });
-  }
-
+async function searchTrip(from, to) {
   const query = `
     query($from: Location!, $to: Location!) {
       trip(from: $from, to: $to, numTripPatterns: 3) {
@@ -235,38 +232,157 @@ app.post('/api/entur/trip', async (req, res) => {
     }
   `;
 
-  try {
-    const response = await fetch(ENTUR_JOURNEY_PLANNER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ET-Client-Name': ENTUR_CLIENT_NAME,
+  const response = await fetch(ENTUR_JOURNEY_PLANNER_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'ET-Client-Name': ENTUR_CLIENT_NAME,
+    },
+    body: JSON.stringify({
+      query,
+      variables: {
+        from: toLocationInput(from),
+        to: toLocationInput(to),
       },
-      body: JSON.stringify({
-        query,
-        variables: {
-          from: toLocationInput(from),
-          to: toLocationInput(to),
-        },
-      }),
-    });
+    }),
+  });
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('Entur reiseplanlegger feilet:', response.status, text);
-      return res.status(502).json({ error: 'Klarte ikke å hente reiseforslag' });
-    }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Entur reiseplanlegger feilet: ${response.status} ${text}`);
+  }
 
-    const data = await response.json();
-    if (data.errors) {
-      console.error('Entur GraphQL-feil:', JSON.stringify(data.errors));
-      return res.status(502).json({ error: 'Entur avviste spørringen', detail: data.errors });
-    }
+  const data = await response.json();
+  if (data.errors) {
+    throw new Error(`Entur GraphQL-feil: ${JSON.stringify(data.errors)}`);
+  }
 
-    res.json({ tripPatterns: data.data.trip.tripPatterns });
+  return data.data.trip.tripPatterns;
+}
+
+app.post('/api/entur/trip', async (req, res) => {
+  const { from, to } = req.body;
+  if (!from || !to) {
+    return res.status(400).json({ error: 'from og to er påkrevd' });
+  }
+
+  try {
+    const tripPatterns = await searchTrip(from, to);
+    res.json({ tripPatterns });
   } catch (err) {
-    console.error('Feil ved Entur reiseplanlegger-kall:', err);
-    res.status(500).json({ error: 'Klarte ikke å nå Entur' });
+    console.error('Feil ved Entur reiseplanlegger-kall:', err.message);
+    res.status(502).json({ error: 'Klarte ikke å hente reiseforslag' });
+  }
+});
+
+// Entur rangerer noen ganger en ren gangtur øverst hvis den er raskere enn
+// å vente på buss. Teknisk riktig, men et dårlig utstillingsvindu for en
+// kollektivselskap-demo — foretrekk et alternativ med faktisk kollektiv-
+// transport når et slikt finnes.
+function pickBestPattern(tripPatterns) {
+  return tripPatterns.find((p) => p.legs.some((leg) => leg.mode !== 'foot')) || tripPatterns[0];
+}
+
+function formatTripReply(fromPlace, toPlace, pattern) {
+  const start = new Date(pattern.startTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
+  const end = new Date(pattern.endTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
+  const minutes = Math.round(pattern.duration / 60);
+  const transitLegs = pattern.legs.filter((leg) => leg.mode !== 'foot');
+  const lineText = transitLegs.length
+    ? transitLegs.map((leg) => (leg.line ? `${leg.line.publicCode} ${leg.line.name}` : leg.mode)).join(' → ')
+    : 'gange hele veien';
+
+  // Enkel billettanbefaling basert på AtBs sonemodell. Prisene er
+  // illustrative demo-tall, ikke reelle AtB-priser.
+  const sameZone = fromPlace.zone && toPlace.zone && fromPlace.zone === toPlace.zone;
+  const ticketLabel = sameZone ? 'Enkeltbillett, 1 sone' : 'Enkeltbillett, 2 soner';
+  const price = sameZone ? '41' : '60';
+
+  const reply =
+    `Beste reise fra ${fromPlace.name} til ${toPlace.name}: avgang ${start}, fremme ${end} ` +
+    `(${minutes} min) med ${lineText}.\n\n` +
+    `Basert på reisen anbefaler jeg ${ticketLabel} (ca. kr ${price},- illustrativ demo-pris).`;
+
+  return { reply, ticketLabel, price };
+}
+
+// Kjenner igjen et enkelt "fra X til Y"-mønster i en fritekstmelding. Brukes
+// som fallback i Kindly-webhooken nedenfor hvis dialogen ikke selv har
+// hentet ut fra/til som egne context-variabler.
+function parseTravelIntent(text) {
+  const match = (text || '').match(/fra\s+(.+?)\s+til\s+(.+)/i);
+  if (!match) return null;
+
+  const from = match[1].trim().replace(/[.?!]+$/, '');
+  let to = match[2].trim();
+
+  const timeMatch = to.match(/^(.*?)\s+(?:klokka|kl\.?)\s+.+$/i);
+  if (timeMatch) to = timeMatch[1];
+  to = to.trim().replace(/[.?!]+$/, '');
+
+  if (!from || !to) return null;
+  return { from, to };
+}
+
+// --- Kindly webhook-action: reiseplanlegging for AtB-boten ---------------
+// Sett opp en dialog i Kindly (Build > din dialog > Output > Advanced >
+// Webhook) med treningsfraser for reiseplanlegging (f.eks. "jeg skal fra X
+// til Y", "hvordan kommer jeg meg til X"), og pek webhook-URL-en hit:
+//   https://<ditt-domene>/api/kindly/actions/atb-trip-planner
+// Kindly sin egen NLU avgjør NÅR denne dialogen trigges og trenger ikke
+// forstå Entur/reiseplanlegging selv — den sender med brukerens
+// opprinnelige melding (og ev. egne context-variabler for fra/til hvis du
+// setter opp entitetsfangst), og vi svarer med reply-teksten Kindly viser
+// frem. Se docs.kindly.ai/webhooks for hele kontrakten.
+app.post('/api/kindly/actions/atb-trip-planner', async (req, res) => {
+  const { message, context } = req.body || {};
+
+  let fromText = context && (context.from || context.fra);
+  let toText = context && (context.to || context.til);
+
+  if (!fromText || !toText) {
+    const intent = parseTravelIntent(message);
+    if (intent) {
+      fromText = fromText || intent.from;
+      toText = toText || intent.to;
+    }
+  }
+
+  if (!fromText || !toText) {
+    return res.json({
+      reply: 'Jeg fikk ikke helt med meg hvor du skal fra og til. Kan du prøve på formen «fra STED til STED»?',
+    });
+  }
+
+  try {
+    const [fromCandidates, toCandidates] = await Promise.all([
+      geocodeAutocomplete(fromText),
+      geocodeAutocomplete(toText),
+    ]);
+    const fromPlace = fromCandidates[0];
+    const toPlace = toCandidates[0];
+
+    if (!fromPlace || !toPlace) {
+      const missing = !fromPlace ? fromText : toText;
+      return res.json({ reply: `Fant ikke stedet «${missing}». Kan du prøve å skrive det litt annerledes?` });
+    }
+
+    const tripPatterns = await searchTrip(fromPlace, toPlace);
+    const pattern = pickBestPattern(tripPatterns);
+
+    if (!pattern) {
+      return res.json({ reply: `Fant ingen reiseforslag fra ${fromPlace.name} til ${toPlace.name} akkurat nå.` });
+    }
+
+    const { reply, price } = formatTripReply(fromPlace, toPlace, pattern);
+
+    res.json({
+      reply,
+      buttons: [{ button_type: 'quick_reply', label: `Betal kr ${price} med Vipps (demo)`, value: 'betal med vipps' }],
+    });
+  } catch (err) {
+    console.error('Feil i AtB trip-planner-webhook:', err.message);
+    res.json({ reply: 'Beklager, jeg klarte ikke å slå opp reisen akkurat nå.' });
   }
 });
 
