@@ -36,8 +36,16 @@
         <ul id="planner-to-suggestions" class="planner-suggestions hidden"></ul>
       </div>
       <div class="planner-field planner-field-time">
-        <label for="planner-time">Når</label>
-        <input id="planner-time" type="text" value="Nå" />
+        <label for="planner-when-mode">Når</label>
+        <select id="planner-when-mode">
+          <option value="now">Nå</option>
+          <option value="depart">Avreise</option>
+          <option value="arrive">Ankomst</option>
+        </select>
+      </div>
+      <div class="planner-field planner-field-datetime hidden" id="planner-datetime-field">
+        <label for="planner-datetime">Tidspunkt</label>
+        <input id="planner-datetime" type="datetime-local" />
       </div>
       <button class="btn-primary planner-submit" type="button" id="planner-submit">Søk reise</button>
     </div>

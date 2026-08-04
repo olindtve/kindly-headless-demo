@@ -13,6 +13,22 @@
   const swapBtn = document.querySelector('.planner-swap');
   const submitBtn = document.getElementById('planner-submit');
   const resultsEl = document.getElementById('planner-results');
+  const whenModeSelect = document.getElementById('planner-when-mode');
+  const datetimeField = document.getElementById('planner-datetime-field');
+  const datetimeInput = document.getElementById('planner-datetime');
+
+  function formatForDatetimeLocal(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  whenModeSelect.addEventListener('change', () => {
+    const isNow = whenModeSelect.value === 'now';
+    datetimeField.classList.toggle('hidden', isNow);
+    if (!isNow && !datetimeInput.value) {
+      datetimeInput.value = formatForDatetimeLocal(new Date());
+    }
+  });
 
   let selected = { from: null, to: null };
   let debounceTimer;
@@ -111,7 +127,9 @@
         .forEach((leg) => {
           const tag = document.createElement('span');
           tag.className = 'trip-leg';
-          tag.textContent = leg.line ? `${leg.line.publicCode} ${leg.line.name}` : leg.mode;
+          const label = leg.line ? `${leg.line.publicCode} ${leg.line.name}` : leg.mode;
+          tag.textContent = `${formatTime(leg.expectedStartTime)} ${label}`;
+          tag.title = `${leg.fromPlace.name} → ${leg.toPlace.name}`;
           legs.appendChild(tag);
         });
       if (!legs.children.length) {
@@ -134,11 +152,20 @@
 
     resultsEl.innerHTML = '<p class="planner-results-empty">Søker …</p>';
 
+    const whenMode = whenModeSelect.value;
+    const body = { from: selected.from, to: selected.to };
+    if (whenMode !== 'now' && datetimeInput.value) {
+      // <input type="datetime-local"> gir lokal tid uten tidssone-suffiks;
+      // Entur forventer en fullverdig ISO 8601-dato.
+      body.dateTime = new Date(datetimeInput.value).toISOString();
+      body.arriveBy = whenMode === 'arrive';
+    }
+
     try {
       const response = await fetch('/api/entur/trip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: selected.from, to: selected.to }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
 

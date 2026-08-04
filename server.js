@@ -211,10 +211,10 @@ function toLocationInput({ id, lat, lon }) {
   return { coordinates: { latitude: lat, longitude: lon } };
 }
 
-async function searchTrip(from, to) {
+async function searchTrip(from, to, { dateTime, arriveBy } = {}) {
   const query = `
-    query($from: Location!, $to: Location!) {
-      trip(from: $from, to: $to, numTripPatterns: 3) {
+    query($from: Location!, $to: Location!, $dateTime: DateTime, $arriveBy: Boolean) {
+      trip(from: $from, to: $to, dateTime: $dateTime, arriveBy: $arriveBy, numTripPatterns: 3) {
         tripPatterns {
           startTime
           endTime
@@ -243,6 +243,10 @@ async function searchTrip(from, to) {
       variables: {
         from: toLocationInput(from),
         to: toLocationInput(to),
+        // Uten dateTime søker Entur fra "nå". arriveBy avgjør om dateTime
+        // tolkes som ønsket avreise- eller ankomsttidspunkt.
+        dateTime: dateTime || undefined,
+        arriveBy: Boolean(arriveBy),
       },
     }),
   });
@@ -261,13 +265,13 @@ async function searchTrip(from, to) {
 }
 
 app.post('/api/entur/trip', async (req, res) => {
-  const { from, to } = req.body;
+  const { from, to, dateTime, arriveBy } = req.body;
   if (!from || !to) {
     return res.status(400).json({ error: 'from og to er påkrevd' });
   }
 
   try {
-    const tripPatterns = await searchTrip(from, to);
+    const tripPatterns = await searchTrip(from, to, { dateTime, arriveBy });
     res.json({ tripPatterns });
   } catch (err) {
     console.error('Feil ved Entur reiseplanlegger-kall:', err.message);

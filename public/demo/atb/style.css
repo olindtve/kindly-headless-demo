@@ -113,7 +113,9 @@ body {
 
 .planner-suggestions li:hover { background: var(--bg-alt); }
 
-.planner-field-time { flex: 0 1 110px; }
+.planner-field-time { flex: 0 1 130px; }
+.planner-field-datetime { flex: 0 1 200px; }
+.planner-field-datetime.hidden { display: none; }
 
 .planner-field label {
   font-size: 0.75rem;
@@ -123,12 +125,14 @@ body {
   letter-spacing: 0.03em;
 }
 
-.planner-field input {
+.planner-field input,
+.planner-field select {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
   font-size: 0.95rem;
   background: white;
+  font-family: inherit;
 }
 
 .planner-swap {
