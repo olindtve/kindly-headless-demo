@@ -238,6 +238,12 @@ body {
 .assistant-intro h2 { margin: 0 0 0.4rem; font-size: 1.4rem; }
 .assistant-intro p { margin: 0 0 1.25rem; color: rgba(255, 255, 255, 0.85); line-height: 1.5; }
 
+.assistant-intro p.assistant-hint {
+  margin-top: -0.75rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
 .assistant-messages {
   display: flex;
   flex-direction: column;
