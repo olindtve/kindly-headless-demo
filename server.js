@@ -310,22 +310,90 @@ function formatTripReply(fromPlace, toPlace, pattern) {
   return { reply, ticketLabel, price };
 }
 
-// Kjenner igjen et enkelt "fra X til Y"-mønster i en fritekstmelding. Brukes
-// som fallback i Kindly-webhooken nedenfor hvis dialogen ikke selv har
-// hentet ut fra/til som egne context-variabler.
-function parseTravelIntent(text) {
-  const match = (text || '').match(/fra\s+(.+?)\s+til\s+(.+)/i);
-  if (!match) return null;
+// Fallback for når Kindly-dialogen ikke selv har fanget fra/til som
+// context-variabler: i stedet for å stole på et rigid "fra X til Y"-mønster
+// (som bare dekker den ene bokstavelige formuleringen), lar vi Entur selv
+// bekrefte hvilke ord i meldingen som faktisk er ekte steder.
 
-  const from = match[1].trim().replace(/[.?!]+$/, '');
-  let to = match[2].trim();
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  const timeMatch = to.match(/^(.*?)\s+(?:klokka|kl\.?)\s+.+$/i);
-  if (timeMatch) to = timeMatch[1];
-  to = to.trim().replace(/[.?!]+$/, '');
+// Norske stedsnavn skrives med stor forbokstav, så vi plukker ut løp av
+// store forbokstaver (1-3 ord) som kandidater. Vanlige pronomen/spørreord
+// filtreres bort før vi i det hele tatt bruker et API-kall på dem.
+const PLACE_CANDIDATE_STOPWORDS = new Set([
+  'jeg', 'vi', 'du', 'han', 'hun', 'det', 'den', 'de', 'dere', 'neste',
+  'gang', 'når', 'hvor', 'hvordan', 'hvorfor', 'kan', 'skal', 'vil', 'må', 'er',
+]);
 
-  if (!from || !to) return null;
-  return { from, to };
+function extractPlaceCandidates(text) {
+  const source = text || '';
+  const matches = source.match(/\b[A-ZÆØÅ][\wæøåÆØÅ'-]*(?:\s+[A-ZÆØÅ][\wæøåÆØÅ'-]*){0,2}\b/g) || [];
+
+  const seen = new Set();
+  const candidates = [];
+  for (const raw of matches) {
+    const candidate = raw.trim();
+    const key = candidate.toLowerCase();
+    if (seen.has(key) || PLACE_CANDIDATE_STOPWORDS.has(key)) continue;
+    seen.add(key);
+    candidates.push(candidate);
+  }
+  return candidates;
+}
+
+// Enturs autocomplete oppgir ingen brukbar treffsikkerhets-score (feltet
+// er alltid tomt i praksis), så et fuzzy-treff som "Jeg" → "Jegtvolden
+// Fjordhotell" ville ellers blitt godtatt som et gyldig sted. Krev i stedet
+// at kandidatordet faktisk finnes som et helt ord i navnet Entur returnerer.
+function candidateMatchesFeature(candidate, feature) {
+  const pattern = new RegExp(`\\b${escapeRegExp(candidate.toLowerCase())}\\b`);
+  return pattern.test((feature.name || '').toLowerCase());
+}
+
+async function resolvePlaceCandidates(text) {
+  const candidates = extractPlaceCandidates(text).slice(0, 6); // begrens antall API-kall
+  const results = await Promise.all(
+    candidates.map(async (candidate) => {
+      const features = await geocodeAutocomplete(candidate).catch(() => []);
+      const best = features.find((f) => candidateMatchesFeature(candidate, f));
+      if (!best) return null;
+      return { candidate, place: best };
+    })
+  );
+  return results.filter(Boolean);
+}
+
+async function inferTripFromMessage(text) {
+  const resolved = await resolvePlaceCandidates(text);
+  if (!resolved.length) return null;
+
+  const fromMatch = resolved.find((r) => new RegExp(`\\bfra\\s+${escapeRegExp(r.candidate)}`, 'i').test(text));
+  const toMatch = resolved.find((r) => new RegExp(`\\btil\\s+${escapeRegExp(r.candidate)}`, 'i').test(text));
+
+  if (fromMatch && toMatch && fromMatch !== toMatch) {
+    return { from: fromMatch.place, to: toMatch.place };
+  }
+
+  const others = resolved.filter((r) => r !== fromMatch && r !== toMatch);
+
+  // "Fra"/"til" er entydige signaler når vi har dem. Uten et av dem gjetter
+  // vi kun når det er nøyaktig ett annet bekreftet sted å velge mellom —
+  // er det flere kandidater (som i "Vålerenga - Rosenborg på Lerkendal",
+  // der alle tre faktisk er ekte stedsnavn) er det for tvetydig, og vi ber
+  // heller om avklaring enn å gjette feil.
+  if (fromMatch && !toMatch && others.length === 1) {
+    return { from: fromMatch.place, to: others[0].place };
+  }
+  if (!fromMatch && toMatch && others.length === 1) {
+    return { from: others[0].place, to: toMatch.place };
+  }
+  if (!fromMatch && !toMatch && resolved.length === 2) {
+    return { from: resolved[0].place, to: resolved[1].place };
+  }
+
+  return null;
 }
 
 // --- Kindly webhook-action: reiseplanlegging for AtB-boten ---------------
@@ -341,34 +409,32 @@ function parseTravelIntent(text) {
 app.post('/api/kindly/actions/atb-trip-planner', async (req, res) => {
   const { message, context } = req.body || {};
 
-  let fromText = context && (context.from || context.fra);
-  let toText = context && (context.to || context.til);
-
-  if (!fromText || !toText) {
-    const intent = parseTravelIntent(message);
-    if (intent) {
-      fromText = fromText || intent.from;
-      toText = toText || intent.to;
-    }
-  }
-
-  if (!fromText || !toText) {
-    return res.json({
-      reply: 'Jeg fikk ikke helt med meg hvor du skal fra og til. Kan du prøve på formen «fra STED til STED»?',
-    });
-  }
-
   try {
-    const [fromCandidates, toCandidates] = await Promise.all([
-      geocodeAutocomplete(fromText),
-      geocodeAutocomplete(toText),
-    ]);
-    const fromPlace = fromCandidates[0];
-    const toPlace = toCandidates[0];
+    let fromPlace;
+    let toPlace;
+
+    const contextFrom = context && (context.from || context.fra);
+    const contextTo = context && (context.to || context.til);
+
+    if (contextFrom && contextTo) {
+      const [fromCandidates, toCandidates] = await Promise.all([
+        geocodeAutocomplete(contextFrom),
+        geocodeAutocomplete(contextTo),
+      ]);
+      fromPlace = fromCandidates[0];
+      toPlace = toCandidates[0];
+    } else {
+      const inferred = await inferTripFromMessage(message);
+      if (inferred) {
+        fromPlace = inferred.from;
+        toPlace = inferred.to;
+      }
+    }
 
     if (!fromPlace || !toPlace) {
-      const missing = !fromPlace ? fromText : toText;
-      return res.json({ reply: `Fant ikke stedet «${missing}». Kan du prøve å skrive det litt annerledes?` });
+      return res.json({
+        reply: 'Jeg fikk ikke helt med meg hvor du skal fra og til. Kan du si det litt tydeligere, f.eks. «fra STED til STED»?',
+      });
     }
 
     const tripPatterns = await searchTrip(fromPlace, toPlace);
