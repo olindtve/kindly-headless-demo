@@ -102,6 +102,73 @@
     return new Date(iso).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
   }
 
+  function formatPlace(place) {
+    const code = place.quay && place.quay.publicCode;
+    return code ? `${place.name} (spor ${code})` : place.name;
+  }
+
+  // Entur bruker linjens offisielle navn ("Stabekk-Oslo S-Ski") som lister
+  // linjens ytterpunkter, ikke retningen for DENNE avgangen — vis derfor
+  // alltid faktisk fra/til istedenfor (eller i tillegg til) linjenavnet.
+  const DIRECTION_LABELS = {
+    depart: 'Start',
+    continue: 'Fortsett',
+    left: 'Sving venstre',
+    right: 'Sving høyre',
+    slightly_left: 'Ta til venstre',
+    slightly_right: 'Ta til høyre',
+    hard_left: 'Sving skarpt til venstre',
+    hard_right: 'Sving skarpt til høyre',
+    uturn_left: 'Snu',
+    uturn_right: 'Snu',
+    elevator: 'Ta heisen',
+    circle_clockwise: 'Følg rundkjøringen',
+    circle_counterclockwise: 'Følg rundkjøringen',
+  };
+
+  function renderLegDetails(leg) {
+    const wrap = document.createElement('div');
+    wrap.className = 'trip-leg-details hidden';
+
+    if (leg.mode === 'foot') {
+      const meters = Math.round(leg.distance);
+      const minutes = Math.max(1, Math.round((new Date(leg.expectedEndTime) - new Date(leg.expectedStartTime)) / 60000));
+      const summary = document.createElement('p');
+      summary.className = 'trip-detail-summary';
+      summary.textContent = `Gå ca. ${meters} m (${minutes} min)`;
+      wrap.appendChild(summary);
+
+      if (leg.steps && leg.steps.length) {
+        const list = document.createElement('ol');
+        list.className = 'trip-steps';
+        leg.steps.forEach((step) => {
+          const li = document.createElement('li');
+          const direction = DIRECTION_LABELS[(step.relativeDirection || '').toLowerCase()] || 'Fortsett';
+          const street = step.streetName && step.streetName !== 'gangvei' ? ` (${step.streetName})` : '';
+          li.textContent = `${direction}${street} – ${Math.round(step.distance)} m`;
+          list.appendChild(li);
+        });
+        wrap.appendChild(list);
+      }
+    } else if (leg.intermediateEstimatedCalls && leg.intermediateEstimatedCalls.length) {
+      const list = document.createElement('ol');
+      list.className = 'trip-stops';
+      leg.intermediateEstimatedCalls.forEach((call) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${formatTime(call.expectedArrivalTime)}</span> ${call.quay.name}`;
+        list.appendChild(li);
+      });
+      wrap.appendChild(list);
+    } else {
+      const summary = document.createElement('p');
+      summary.className = 'trip-detail-summary';
+      summary.textContent = 'Ingen mellomstopp registrert for denne etappen.';
+      wrap.appendChild(summary);
+    }
+
+    return wrap;
+  }
+
   function renderResults(tripPatterns) {
     resultsEl.innerHTML = '';
 
@@ -122,24 +189,36 @@
 
       const legs = document.createElement('div');
       legs.className = 'trip-legs';
-      pattern.legs
-        .filter((leg) => leg.mode !== 'foot')
-        .forEach((leg) => {
-          const tag = document.createElement('span');
-          tag.className = 'trip-leg';
-          const label = leg.line ? `${leg.line.publicCode} ${leg.line.name}` : leg.mode;
-          tag.textContent = `${formatTime(leg.expectedStartTime)} ${label}`;
-          tag.title = `${leg.fromPlace.name} → ${leg.toPlace.name}`;
-          legs.appendChild(tag);
-        });
-      if (!legs.children.length) {
-        const tag = document.createElement('span');
-        tag.className = 'trip-leg';
-        tag.textContent = 'Gange hele veien';
-        legs.appendChild(tag);
-      }
-      card.appendChild(legs);
 
+      pattern.legs.forEach((leg) => {
+        const block = document.createElement('div');
+        block.className = 'trip-leg-block';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'trip-leg';
+
+        if (leg.mode === 'foot') {
+          const meters = Math.round(leg.distance);
+          toggle.textContent = `${formatTime(leg.expectedStartTime)} Gange · ${formatPlace(leg.fromPlace)} → ${formatPlace(leg.toPlace)} (${meters} m)`;
+        } else {
+          const code = leg.line ? leg.line.publicCode : leg.mode;
+          toggle.textContent = `${formatTime(leg.expectedStartTime)} ${code} · ${formatPlace(leg.fromPlace)} → ${formatPlace(leg.toPlace)}`;
+        }
+
+        const details = renderLegDetails(leg);
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.addEventListener('click', () => {
+          const isHidden = details.classList.toggle('hidden');
+          toggle.setAttribute('aria-expanded', String(!isHidden));
+        });
+
+        block.appendChild(toggle);
+        block.appendChild(details);
+        legs.appendChild(block);
+      });
+
+      card.appendChild(legs);
       resultsEl.appendChild(card);
     });
   }

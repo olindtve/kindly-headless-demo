@@ -159,12 +159,12 @@ const ENTUR_JOURNEY_PLANNER_URL = 'https://api.entur.io/journey-planner/v3/graph
 // annen landsdel rangeres høyere enn Moholt i Trondheim).
 const TRONDHEIM_CENTER = { lat: 63.4305, lon: 10.3951 };
 
-async function geocodeAutocomplete(q) {
+async function geocodeAutocomplete(q, focus = TRONDHEIM_CENTER) {
   if (!q || q.trim().length < 2) return [];
 
   const url =
     `${ENTUR_GEOCODER_URL}?text=${encodeURIComponent(q)}&lang=no&size=5` +
-    `&focus.point.lat=${TRONDHEIM_CENTER.lat}&focus.point.lon=${TRONDHEIM_CENTER.lon}`;
+    `&focus.point.lat=${focus.lat}&focus.point.lon=${focus.lon}`;
   const response = await fetch(url, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT_NAME },
   });
@@ -222,10 +222,20 @@ async function searchTrip(from, to, { dateTime, arriveBy } = {}) {
           legs {
             mode
             line { publicCode name }
-            fromPlace { name }
-            toPlace { name }
+            fromPlace { name quay { name publicCode } }
+            toPlace { name quay { name publicCode } }
             expectedStartTime
             expectedEndTime
+            distance
+            intermediateEstimatedCalls {
+              quay { name }
+              expectedArrivalTime
+            }
+            steps {
+              distance
+              streetName
+              relativeDirection
+            }
           }
         }
       }
@@ -287,13 +297,27 @@ function pickBestPattern(tripPatterns) {
   return tripPatterns.find((p) => p.legs.some((leg) => leg.mode !== 'foot')) || tripPatterns[0];
 }
 
+// Linjens offisielle navn ("Stabekk-Oslo S-Ski") lister linjens ytterpunkter,
+// ikke retningen for DENNE avgangen — det har tidligere blitt lest som "feil
+// retning" siden f.eks. "Kolbotn" ikke engang står i linjenavnet. Vis derfor
+// alltid faktisk fra/til (+ spor når det finnes) for hver etappe i stedet.
+function formatPlaceWithPlatform(place) {
+  const code = place.quay && place.quay.publicCode;
+  return code ? `${place.name} (spor ${code})` : place.name;
+}
+
 function formatTripReply(fromPlace, toPlace, pattern) {
   const start = new Date(pattern.startTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
   const end = new Date(pattern.endTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
   const minutes = Math.round(pattern.duration / 60);
   const transitLegs = pattern.legs.filter((leg) => leg.mode !== 'foot');
   const lineText = transitLegs.length
-    ? transitLegs.map((leg) => (leg.line ? `${leg.line.publicCode} ${leg.line.name}` : leg.mode)).join(' → ')
+    ? transitLegs
+        .map((leg) => {
+          const label = leg.line ? leg.line.publicCode : leg.mode;
+          return `${label} ${formatPlaceWithPlatform(leg.fromPlace)} → ${formatPlaceWithPlatform(leg.toPlace)}`;
+        })
+        .join(', deretter ')
     : 'gange hele veien';
 
   // Enkel billettanbefaling basert på AtBs sonemodell. Prisene er
@@ -365,8 +389,78 @@ async function resolvePlaceCandidates(text) {
   return results.filter(Boolean);
 }
 
+// Folk skriver sjelden stedsnavn med stor forbokstav i en chat ("jeg skal
+// fra kolbotn til fred.olsens gate 1"), så den ordvise kandidat-metoden
+// over (som krever stor bokstav) bommer fullstendig på slikt. Når meldingen
+// har eksplisitte "fra"/"til"-markører, er det mye mer treffsikkert å hente
+// ut hele frasen som følger markøren — uavhengig av store/små bokstaver —
+// og la Entur geokode frasen direkte. Dette fanger også flerords-adresser
+// som "fred.olsens gate 1", som ordvis gjenkjenning ville delt opp feil.
+const PHRASE_BOUNDARY = /\s+(?:fra|til|innen|senest|klokka|kl\.?|i\s+morgen|i\s+dag|og)\b.*$/i;
+
+function extractMarkerPhrase(text, marker) {
+  const match = (text || '').match(new RegExp(`\\b${marker}\\s+(.+)`, 'i'));
+  if (!match) return null;
+  let phrase = match[1].replace(PHRASE_BOUNDARY, '').trim();
+  // Sikkerhetsnett: ikke dra med resten av en lang setning uten noe tydelig stoppord.
+  const words = phrase.split(/\s+/);
+  if (words.length > 6) phrase = words.slice(0, 6).join(' ');
+  return phrase || null;
+}
+
+async function resolvePhrase(phrase, focus) {
+  if (!phrase) return null;
+  const features = await geocodeAutocomplete(phrase, focus).catch(() => []);
+  const best = features.find((f) => candidateMatchesFeature(phrase.split(/\s+/)[0], f)) || features[0];
+  return best || null;
+}
+
 async function inferTripFromMessage(text) {
+  const fromPhrase = extractMarkerPhrase(text, 'fra');
+  const toPhrase = extractMarkerPhrase(text, 'til');
+
+  // Vår faste Trondheim-vekting kan la likt-navngitte steder andre steder i
+  // landet ("Kolbotn, Lesja") rangeres foran det brukeren faktisk mener
+  // ("Kolbotn, Nordre Follo") når reisen egentlig foregår et helt annet sted
+  // i landet. Løs derfor det mest presise endepunktet først (en adresse med
+  // gatenummer er sjelden tvetydig), og bruk det til å vekte søket etter det
+  // andre — to steder i samme reise ligger typisk nær hverandre.
+  const looksLikeAddress = (phrase) => Boolean(phrase && /\d/.test(phrase));
+  const phrases = { from: fromPhrase, to: toPhrase };
+  const firstKey = looksLikeAddress(toPhrase) || !looksLikeAddress(fromPhrase) ? 'to' : 'from';
+  const secondKey = firstKey === 'to' ? 'from' : 'to';
+
+  const resolvedFirst = await resolvePhrase(phrases[firstKey]);
+  const resolvedSecond = await resolvePhrase(
+    phrases[secondKey],
+    resolvedFirst ? { lat: resolvedFirst.lat, lon: resolvedFirst.lon } : undefined
+  );
+
+  const fromByMarker = firstKey === 'from' ? resolvedFirst : resolvedSecond;
+  const toByMarker = firstKey === 'to' ? resolvedFirst : resolvedSecond;
+
+  if (fromByMarker && toByMarker) {
+    return { from: fromByMarker, to: toByMarker };
+  }
+
+  // Delvis markørtreff (eller ingen i det hele tatt): la ordvis
+  // stedsgjenkjenning (som også dekker underforståtte destinasjoner uten
+  // "til") fylle inn resten.
   const resolved = await resolvePlaceCandidates(text);
+  const others = resolved.filter((r) => r.place !== fromByMarker && r.place !== toByMarker);
+
+  if (fromByMarker && !toByMarker && others.length === 1) {
+    return { from: fromByMarker, to: others[0].place };
+  }
+  if (!fromByMarker && toByMarker && others.length === 1) {
+    return { from: others[0].place, to: toByMarker };
+  }
+  if (fromByMarker || toByMarker) {
+    // Fant nøyaktig ett av stedene sikkert, men usikkert på det andre —
+    // for tvetydig til å gjette, be heller om avklaring.
+    return null;
+  }
+
   if (!resolved.length) return null;
 
   const fromMatch = resolved.find((r) => new RegExp(`\\bfra\\s+${escapeRegExp(r.candidate)}`, 'i').test(text));
@@ -376,18 +470,18 @@ async function inferTripFromMessage(text) {
     return { from: fromMatch.place, to: toMatch.place };
   }
 
-  const others = resolved.filter((r) => r !== fromMatch && r !== toMatch);
+  const remaining = resolved.filter((r) => r !== fromMatch && r !== toMatch);
 
   // "Fra"/"til" er entydige signaler når vi har dem. Uten et av dem gjetter
   // vi kun når det er nøyaktig ett annet bekreftet sted å velge mellom —
   // er det flere kandidater (som i "Vålerenga - Rosenborg på Lerkendal",
   // der alle tre faktisk er ekte stedsnavn) er det for tvetydig, og vi ber
   // heller om avklaring enn å gjette feil.
-  if (fromMatch && !toMatch && others.length === 1) {
-    return { from: fromMatch.place, to: others[0].place };
+  if (fromMatch && !toMatch && remaining.length === 1) {
+    return { from: fromMatch.place, to: remaining[0].place };
   }
-  if (!fromMatch && toMatch && others.length === 1) {
-    return { from: others[0].place, to: toMatch.place };
+  if (!fromMatch && toMatch && remaining.length === 1) {
+    return { from: remaining[0].place, to: toMatch.place };
   }
   if (!fromMatch && !toMatch && resolved.length === 2) {
     return { from: resolved[0].place, to: resolved[1].place };
