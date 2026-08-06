@@ -354,7 +354,9 @@ const NORWEGIAN_HOUR_WORDS = {
 };
 
 function extractTimeOfDay(text) {
-  let match = text.match(/\b(?:kl\.?|klokka|klokken)\s*(\d{1,2})[:.]?(\d{2})?\b/i);
+  // "innen"/"senest" fungerer også som tidsprefiks på egen hånd ("senest
+  // 0900"), ikke bare sammen med "kl."/"klokka".
+  let match = text.match(/\b(?:kl\.?|klokka|klokken|innen|senest)\s*(\d{1,2})[:.]?(\d{2})?\b/i);
   if (match) {
     const hour = parseInt(match[1], 10);
     const minute = match[2] ? parseInt(match[2], 10) : 0;
@@ -497,7 +499,10 @@ const PHRASE_BOUNDARY = new RegExp(
 
 function extractMarkerPhrase(text, markers) {
   const markerPattern = Array.isArray(markers) ? markers.join('|') : markers;
-  const match = (text || '').match(new RegExp(`\\b(?:${markerPattern})\\s+(.+)`, 'i'));
+  // "til å <verb>" er en infinitiv-konstruksjon ("nødt til å komme"), ikke
+  // et reisemål — ekskluder den, ellers vinner den ofte over det faktiske
+  // "til STED" lenger ute i samme setning siden den kommer først.
+  const match = (text || '').match(new RegExp(`\\b(?:${markerPattern})(?!\\s+å\\s)\\s+(.+)`, 'i'));
   if (!match) return null;
   let phrase = match[1].replace(PHRASE_BOUNDARY, '').trim();
   // Sikkerhetsnett: ikke dra med resten av en lang setning uten noe tydelig stoppord.
@@ -509,8 +514,15 @@ function extractMarkerPhrase(text, markers) {
 async function resolvePhrase(phrase, focus) {
   if (!phrase) return null;
   const features = await geocodeAutocomplete(phrase, focus).catch(() => []);
-  const best = features.find((f) => candidateMatchesFeature(phrase.split(/\s+/)[0], f)) || features[0];
-  return best || null;
+  // Del på både mellomrom OG punktum ("fred.olsens" er ellers ett
+  // sammenhengende token som aldri matcher "Fred. Olsens" i Entur-svaret),
+  // og hopp over for korte fragmenter (bindestreker, forkortelser).
+  const significantWord = phrase.split(/[\s.]+/).find((w) => w.length > 2) || phrase;
+  // NB: ingen fallback til "beste fuzzy-treff" her — har vi ingen kandidat
+  // som faktisk inneholder ordet vi lette etter, er det bedre å si at vi
+  // ikke forsto enn å gjette et sted som bare klang likt (f.eks. "å komme
+  // frem" -> "Kommeren, Vennesla").
+  return features.find((f) => candidateMatchesFeature(significantWord, f)) || null;
 }
 
 async function inferTripFromMessage(text) {
