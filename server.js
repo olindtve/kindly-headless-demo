@@ -486,13 +486,18 @@ async function resolvePlaceCandidates(text) {
 // som ikke regner æ/ø/å som ordtegn, så "på\b" ville aldri truffet. \s+
 // foran garanterer allerede at vi står ved en frisk ordstart, og lookahead
 // på slutten sjekker at hele ordet er ferdig (ikke midt inni et lengre ord).
+// "på" er bevisst IKKE en generell stoppgrense — den brukes også som del av
+// selve stedsbeskrivelsen ("Fjellveien 1c på Kolbotn"), så et blankt "på"
+// ville kappet bort nødvendig kontekst. Den fungerer kun som stoppord når
+// den innleder en ukedag ("på lørdag").
 const PHRASE_BOUNDARY = new RegExp(
-  `\\s+(?:fra|til|innen|senest|før|klokka|klokken|kl\\.?|på|i\\s+morgen|i\\s+overmorgen|i\\s+dag|og|${WEEKDAYS.join('|')})(?=\\s|$|[.,!?]).*$`,
+  `\\s+(?:fra|til|innen|senest|før|klokka|klokken|kl\\.?|på\\s+(?:${WEEKDAYS.join('|')})|i\\s+morgen|i\\s+overmorgen|i\\s+dag|og|${WEEKDAYS.join('|')})(?=\\s|$|[.,!?]).*$`,
   'i'
 );
 
-function extractMarkerPhrase(text, marker) {
-  const match = (text || '').match(new RegExp(`\\b${marker}\\s+(.+)`, 'i'));
+function extractMarkerPhrase(text, markers) {
+  const markerPattern = Array.isArray(markers) ? markers.join('|') : markers;
+  const match = (text || '').match(new RegExp(`\\b(?:${markerPattern})\\s+(.+)`, 'i'));
   if (!match) return null;
   let phrase = match[1].replace(PHRASE_BOUNDARY, '').trim();
   // Sikkerhetsnett: ikke dra med resten av en lang setning uten noe tydelig stoppord.
@@ -509,8 +514,11 @@ async function resolvePhrase(phrase, focus) {
 }
 
 async function inferTripFromMessage(text) {
-  const fromPhrase = extractMarkerPhrase(text, 'fra');
-  const toPhrase = extractMarkerPhrase(text, 'til');
+  const fromPhrase = extractMarkerPhrase(text, ['fra']);
+  // "til" er vanligst, men folk sier ofte "må ankomme X" / "kommer til X"
+  // i stedet når reisen er tidsstyrt av noe (fly, kamp, møte) fremfor et
+  // rent "til"-mål.
+  const toPhrase = extractMarkerPhrase(text, ['til', 'ankomme', 'kommer til']);
 
   // Vår faste Trondheim-vekting kan la likt-navngitte steder andre steder i
   // landet ("Kolbotn, Lesja") rangeres foran det brukeren faktisk mener
