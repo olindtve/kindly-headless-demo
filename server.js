@@ -306,7 +306,7 @@ function formatPlaceWithPlatform(place) {
   return code ? `${place.name} (spor ${code})` : place.name;
 }
 
-function formatTripReply(fromPlace, toPlace, pattern) {
+function formatTripReply(fromPlace, toPlace, pattern, timeExpr) {
   const start = new Date(pattern.startTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
   const end = new Date(pattern.endTime).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
   const minutes = Math.round(pattern.duration / 60);
@@ -326,12 +326,98 @@ function formatTripReply(fromPlace, toPlace, pattern) {
   const ticketLabel = sameZone ? 'Enkeltbillett, 1 sone' : 'Enkeltbillett, 2 soner';
   const price = sameZone ? '41' : '60';
 
+  // Bekreft hvilket tidsuttrykk vi faktisk tolket meldingen som, så det er
+  // synlig for brukeren om vi f.eks. skjønte "innen kl. ni i morgen" riktig.
+  const timeNote = timeExpr
+    ? ` (søkt med ønsket ${timeExpr.arriveBy ? 'ankomst innen' : 'avreise ca.'} ${new Date(
+        timeExpr.dateTime
+      ).toLocaleString('no-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`
+    : '';
+
   const reply =
     `Beste reise fra ${fromPlace.name} til ${toPlace.name}: avgang ${start}, fremme ${end} ` +
-    `(${minutes} min) med ${lineText}.\n\n` +
+    `(${minutes} min) med ${lineText}.${timeNote}\n\n` +
     `Basert på reisen anbefaler jeg ${ticketLabel} (ca. kr ${price},- illustrativ demo-pris).`;
 
   return { reply, ticketLabel, price };
+}
+
+// Kjenner igjen tidsuttrykk i fritekst ("innen kl. 0900 i morgen", "klokka
+// ni", "på lørdag") og oversetter til dateTime/arriveBy for Entur — samme
+// mekanikk som Nå/Avreise/Ankomst-feltet i reiseplanleggeren, bare hentet
+// fra selve meldingsteksten i stedet for et eget skjemafelt.
+const NORWEGIAN_HOUR_WORDS = {
+  null: 0, en: 1, to: 2, tre: 3, fire: 4, fem: 5, seks: 6, sju: 7, syv: 7,
+  åtte: 8, ni: 9, ti: 10, elleve: 11, tolv: 12, tretten: 13, fjorten: 14,
+  femten: 15, seksten: 16, sytten: 17, atten: 18, nitten: 19, tjue: 20,
+  tjueen: 21, tjueto: 22, tjuetre: 23, tjuefire: 24,
+};
+
+function extractTimeOfDay(text) {
+  let match = text.match(/\b(?:kl\.?|klokka|klokken)\s*(\d{1,2})[:.]?(\d{2})?\b/i);
+  if (match) {
+    const hour = parseInt(match[1], 10);
+    const minute = match[2] ? parseInt(match[2], 10) : 0;
+    if (hour <= 24 && minute < 60) return { hour: hour % 24, minute };
+  }
+
+  match = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if (match) return { hour: parseInt(match[1], 10), minute: parseInt(match[2], 10) };
+
+  match = text.match(/\b(?:kl\.?|klokka|klokken)\s+([a-zæøå]+)\b/i);
+  if (match && match[1].toLowerCase() in NORWEGIAN_HOUR_WORDS) {
+    return { hour: NORWEGIAN_HOUR_WORDS[match[1].toLowerCase()], minute: 0 };
+  }
+
+  return null;
+}
+
+const WEEKDAYS = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
+
+function extractDate(text, referenceDate) {
+  const lower = text.toLowerCase();
+  const base = new Date(referenceDate);
+
+  if (/\bi\s+overmorgen\b/.test(lower)) {
+    base.setDate(base.getDate() + 2);
+    return base;
+  }
+  if (/\bi\s+morgen\b/.test(lower)) {
+    base.setDate(base.getDate() + 1);
+    return base;
+  }
+  if (/\bi\s+dag\b/.test(lower)) return base;
+
+  for (let i = 0; i < WEEKDAYS.length; i++) {
+    if (new RegExp(`\\b(?:på\\s+)?${WEEKDAYS[i]}\\b`).test(lower)) {
+      let diff = (i - base.getDay() + 7) % 7;
+      if (diff === 0) diff = 7; // "på lørdag" en lørdag betyr neste lørdag
+      base.setDate(base.getDate() + diff);
+      return base;
+    }
+  }
+
+  return null;
+}
+
+function parseTimeExpression(text, now = new Date()) {
+  const source = text || '';
+  const timeOfDay = extractTimeOfDay(source);
+  if (!timeOfDay) return null;
+
+  const explicitDate = extractDate(source, now);
+  const arriveBy = /\b(?:innen|senest|før)\b/i.test(source);
+
+  const result = new Date(explicitDate || now);
+  result.setHours(timeOfDay.hour, timeOfDay.minute, 0, 0);
+
+  // Ingen eksplisitt dato oppgitt, og klokkeslettet er allerede passert i
+  // dag: anta i morgen fremfor et tidspunkt bakover i tid.
+  if (!explicitDate && result.getTime() < now.getTime()) {
+    result.setDate(result.getDate() + 1);
+  }
+
+  return { dateTime: result.toISOString(), arriveBy };
 }
 
 // Fallback for når Kindly-dialogen ikke selv har fanget fra/til som
@@ -396,7 +482,14 @@ async function resolvePlaceCandidates(text) {
 // ut hele frasen som følger markøren — uavhengig av store/små bokstaver —
 // og la Entur geokode frasen direkte. Dette fanger også flerords-adresser
 // som "fred.olsens gate 1", som ordvis gjenkjenning ville delt opp feil.
-const PHRASE_BOUNDARY = /\s+(?:fra|til|innen|senest|klokka|kl\.?|i\s+morgen|i\s+dag|og)\b.*$/i;
+// NB: bevisst ingen \b etter alternativ-gruppen — JS sin \b bygger på \w,
+// som ikke regner æ/ø/å som ordtegn, så "på\b" ville aldri truffet. \s+
+// foran garanterer allerede at vi står ved en frisk ordstart, og lookahead
+// på slutten sjekker at hele ordet er ferdig (ikke midt inni et lengre ord).
+const PHRASE_BOUNDARY = new RegExp(
+  `\\s+(?:fra|til|innen|senest|før|klokka|klokken|kl\\.?|på|i\\s+morgen|i\\s+overmorgen|i\\s+dag|og|${WEEKDAYS.join('|')})(?=\\s|$|[.,!?]).*$`,
+  'i'
+);
 
 function extractMarkerPhrase(text, marker) {
   const match = (text || '').match(new RegExp(`\\b${marker}\\s+(.+)`, 'i'));
@@ -531,14 +624,15 @@ app.post('/api/kindly/actions/atb-trip-planner', async (req, res) => {
       });
     }
 
-    const tripPatterns = await searchTrip(fromPlace, toPlace);
+    const timeExpr = parseTimeExpression(message);
+    const tripPatterns = await searchTrip(fromPlace, toPlace, timeExpr || {});
     const pattern = pickBestPattern(tripPatterns);
 
     if (!pattern) {
       return res.json({ reply: `Fant ingen reiseforslag fra ${fromPlace.name} til ${toPlace.name} akkurat nå.` });
     }
 
-    const { reply, price } = formatTripReply(fromPlace, toPlace, pattern);
+    const { reply, price } = formatTripReply(fromPlace, toPlace, pattern, timeExpr);
 
     res.json({
       reply,
