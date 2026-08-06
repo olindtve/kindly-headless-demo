@@ -354,9 +354,9 @@ const NORWEGIAN_HOUR_WORDS = {
 };
 
 function extractTimeOfDay(text) {
-  // "innen"/"senest" fungerer også som tidsprefiks på egen hånd ("senest
-  // 0900"), ikke bare sammen med "kl."/"klokka".
-  let match = text.match(/\b(?:kl\.?|klokka|klokken|innen|senest)\s*(\d{1,2})[:.]?(\d{2})?\b/i);
+  // "innen"/"senest"/"etter" fungerer også som tidsprefiks på egen hånd
+  // ("senest 0900", "etter kl 16"), ikke bare sammen med "kl."/"klokka".
+  let match = text.match(/\b(?:kl\.?|klokka|klokken|innen|senest|etter)\s*(\d{1,2})[:.]?(\d{2})?\b/i);
   if (match) {
     const hour = parseInt(match[1], 10);
     const minute = match[2] ? parseInt(match[2], 10) : 0;
@@ -493,7 +493,7 @@ async function resolvePlaceCandidates(text) {
 // ville kappet bort nødvendig kontekst. Den fungerer kun som stoppord når
 // den innleder en ukedag ("på lørdag").
 const PHRASE_BOUNDARY = new RegExp(
-  `\\s+(?:fra|til|innen|senest|før|klokka|klokken|kl\\.?|på\\s+(?:${WEEKDAYS.join('|')})|i\\s+morgen|i\\s+overmorgen|i\\s+dag|og|${WEEKDAYS.join('|')})(?=\\s|$|[.,!?]).*$`,
+  `\\s+(?:fra|til|innen|senest|før|etter|klokka|klokken|kl\\.?|på\\s+(?:${WEEKDAYS.join('|')})|i\\s+morgen|i\\s+overmorgen|i\\s+dag|og|${WEEKDAYS.join('|')})(?=\\s|$|[.,!?]).*$`,
   'i'
 );
 
