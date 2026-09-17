@@ -525,19 +525,14 @@ async function resolvePhrase(phrase, focus) {
   return features.find((f) => candidateMatchesFeature(significantWord, f)) || null;
 }
 
-async function inferTripFromMessage(text) {
-  const fromPhrase = extractMarkerPhrase(text, ['fra']);
-  // "til" er vanligst, men folk sier ofte "må ankomme X" / "kommer til X"
-  // i stedet når reisen er tidsstyrt av noe (fly, kamp, møte) fremfor et
-  // rent "til"-mål.
-  const toPhrase = extractMarkerPhrase(text, ['til', 'ankomme', 'kommer til']);
-
-  // Vår faste Trondheim-vekting kan la likt-navngitte steder andre steder i
-  // landet ("Kolbotn, Lesja") rangeres foran det brukeren faktisk mener
-  // ("Kolbotn, Nordre Follo") når reisen egentlig foregår et helt annet sted
-  // i landet. Løs derfor det mest presise endepunktet først (en adresse med
-  // gatenummer er sjelden tvetydig), og bruk det til å vekte søket etter det
-  // andre — to steder i samme reise ligger typisk nær hverandre.
+// Vår faste Trondheim-vekting kan la likt-navngitte steder andre steder i
+// landet ("Kolbotn, Lesja") rangeres foran det brukeren faktisk mener
+// ("Kolbotn, Nordre Follo") når reisen egentlig foregår et helt annet sted
+// i landet. Løs derfor det mest presise endepunktet først (en adresse med
+// gatenummer er sjelden tvetydig), og bruk det til å vekte søket etter det
+// andre — to steder i samme reise ligger typisk nær hverandre. Delt mellom
+// fritekst-uttrekk og rene from/to-felt Kindlys AI selv har trukket ut.
+async function resolvePlacePair(fromPhrase, toPhrase) {
   const looksLikeAddress = (phrase) => Boolean(phrase && /\d/.test(phrase));
   const phrases = { from: fromPhrase, to: toPhrase };
   const firstKey = looksLikeAddress(toPhrase) || !looksLikeAddress(fromPhrase) ? 'to' : 'from';
@@ -549,8 +544,20 @@ async function inferTripFromMessage(text) {
     resolvedFirst ? { lat: resolvedFirst.lat, lon: resolvedFirst.lon } : undefined
   );
 
-  const fromByMarker = firstKey === 'from' ? resolvedFirst : resolvedSecond;
-  const toByMarker = firstKey === 'to' ? resolvedFirst : resolvedSecond;
+  return {
+    from: firstKey === 'from' ? resolvedFirst : resolvedSecond,
+    to: firstKey === 'to' ? resolvedFirst : resolvedSecond,
+  };
+}
+
+async function inferTripFromMessage(text) {
+  const fromPhrase = extractMarkerPhrase(text, ['fra']);
+  // "til" er vanligst, men folk sier ofte "må ankomme X" / "kommer til X"
+  // i stedet når reisen er tidsstyrt av noe (fly, kamp, møte) fremfor et
+  // rent "til"-mål.
+  const toPhrase = extractMarkerPhrase(text, ['til', 'ankomme', 'kommer til']);
+
+  const { from: fromByMarker, to: toByMarker } = await resolvePlacePair(fromPhrase, toPhrase);
 
   if (fromByMarker && toByMarker) {
     return { from: fromByMarker, to: toByMarker };
@@ -603,18 +610,23 @@ async function inferTripFromMessage(text) {
   return null;
 }
 
-// --- Kindly webhook-action: reiseplanlegging for AtB-boten ---------------
-// Sett opp en dialog i Kindly (Build > din dialog > Output > Advanced >
-// Webhook) med treningsfraser for reiseplanlegging (f.eks. "jeg skal fra X
-// til Y", "hvordan kommer jeg meg til X"), og pek webhook-URL-en hit:
-//   https://<ditt-domene>/api/kindly/actions/atb-trip-planner
-// Kindly sin egen NLU avgjør NÅR denne dialogen trigges og trenger ikke
-// forstå Entur/reiseplanlegging selv — den sender med brukerens
-// opprinnelige melding (og ev. egne context-variabler for fra/til hvis du
-// setter opp entitetsfangst), og vi svarer med reply-teksten Kindly viser
-// frem. Se docs.kindly.ai/webhooks for hele kontrakten.
+// --- Kindly Action: reiseplanlegging for AtB-boten -----------------------
+// Registrert som en Action i Kindly v3 (Topics > din topic > Actions),
+// pekt mot https://<ditt-domene>/api/kindly/actions/atb-trip-planner.
+//
+// Foretrukket oppsett: la Kindlys AI selv trekke ut rene body fields
+// (Source: AI) — `from`, `to` og `timeExpression` — siden AI-en forstår
+// fritekst langt mer robust enn regex-fallbacken under. Vi gjør bevisst
+// IKKE selve datoberegningen der: en språkmodell uten kjennskap til
+// dagens dato bommer lett på "i morgen"/"på lørdag", så `timeExpression`
+// skal være den RÅ frasen ("innen kl. 9 i morgen") — vår egen
+// parseTimeExpression() regner ut faktisk dato/tid fra serverens klokke.
+//
+// Faller tilbake til context.from/til (entitetsfangst) og til slutt full
+// fritekst-tolkning av `message` hvis feltene ikke er satt opp/tomme, så
+// dette fungerer uendret med eldre dialog-webhook-oppsett også.
 app.post('/api/kindly/actions/atb-trip-planner', async (req, res) => {
-  const { message, context } = req.body || {};
+  const { message, context, from: fromField, to: toField, timeExpression } = req.body || {};
 
   try {
     let fromPlace;
@@ -623,7 +635,9 @@ app.post('/api/kindly/actions/atb-trip-planner', async (req, res) => {
     const contextFrom = context && (context.from || context.fra);
     const contextTo = context && (context.to || context.til);
 
-    if (contextFrom && contextTo) {
+    if (fromField && toField) {
+      ({ from: fromPlace, to: toPlace } = await resolvePlacePair(fromField, toField));
+    } else if (contextFrom && contextTo) {
       const [fromCandidates, toCandidates] = await Promise.all([
         geocodeAutocomplete(contextFrom),
         geocodeAutocomplete(contextTo),
@@ -644,7 +658,7 @@ app.post('/api/kindly/actions/atb-trip-planner', async (req, res) => {
       });
     }
 
-    const timeExpr = parseTimeExpression(message);
+    const timeExpr = parseTimeExpression(timeExpression || message);
     const tripPatterns = await searchTrip(fromPlace, toPlace, timeExpr || {});
     const pattern = pickBestPattern(tripPatterns);
 
